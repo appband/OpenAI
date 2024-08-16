@@ -10,6 +10,8 @@ import Foundation
 import FoundationNetworking
 #endif
 
+public typealias AdditionalHeadersBlock = (URL) -> [String: String]
+
 final public class OpenAI: OpenAIProtocol {
 
     public struct Configuration {
@@ -27,12 +29,23 @@ final public class OpenAI: OpenAIProtocol {
         /// Default request timeout
         public let timeoutInterval: TimeInterval
         
-        public init(token: String, organizationIdentifier: String? = nil, host: String = "api.openai.com", port: Int = 443, scheme: String = "https", timeoutInterval: TimeInterval = 60.0) {
+        public let defaultHeaders: [String: String]
+
+        public init(
+            token: String,
+            organizationIdentifier: String? = nil,
+            host: String = "api.openai.com",
+            port: Int = 443,
+            scheme: String = "https",
+            defaultHeaders: [String: String] = [:],
+            timeoutInterval: TimeInterval = 60.0
+        ) {
             self.token = token
             self.organizationIdentifier = organizationIdentifier
             self.host = host
             self.port = port
             self.scheme = scheme
+            self.defaultHeaders = defaultHeaders
             self.timeoutInterval = timeoutInterval
         }
     }
@@ -41,7 +54,8 @@ final public class OpenAI: OpenAIProtocol {
     private var streamingSessions = ArrayWithThreadSafety<NSObject>()
     
     public let configuration: Configuration
-
+    public var additionalHeadersBlock: AdditionalHeadersBlock?
+    
     public convenience init(apiToken: String) {
         self.init(configuration: Configuration(token: apiToken), session: URLSession.shared)
     }
@@ -126,9 +140,13 @@ extension OpenAI {
 
     func performRequest<ResultType: Codable>(request: any URLRequestBuildable, completion: @escaping (Result<ResultType, Error>) -> Void) {
         do {
-            let request = try request.build(token: configuration.token, 
-                                            organizationIdentifier: configuration.organizationIdentifier,
-                                            timeoutInterval: configuration.timeoutInterval)
+            let request = try request.build(
+                token: configuration.token,
+                organizationIdentifier: configuration.organizationIdentifier,
+                timeoutInterval: configuration.timeoutInterval,
+                defaultHeaders: configuration.defaultHeaders,
+                additionalHeadersBlock: self.additionalHeadersBlock
+            )
             let task = session.dataTask(with: request) { data, _, error in
                 if let error = error {
                     return completion(.failure(error))
@@ -151,9 +169,13 @@ extension OpenAI {
     
     func performStreamingRequest<ResultType: Codable>(request: any URLRequestBuildable, onResult: @escaping (Result<ResultType, Error>) -> Void, completion: ((Error?) -> Void)?) {
         do {
-            let request = try request.build(token: configuration.token, 
-                                            organizationIdentifier: configuration.organizationIdentifier,
-                                            timeoutInterval: configuration.timeoutInterval)
+            let request = try request.build(
+                token: configuration.token,
+                organizationIdentifier: configuration.organizationIdentifier,
+                timeoutInterval: configuration.timeoutInterval,
+                defaultHeaders: configuration.defaultHeaders,
+                additionalHeadersBlock: self.additionalHeadersBlock
+            )
             let session = StreamingSession<ResultType>(urlRequest: request)
             session.onReceiveContent = {_, object in
                 onResult(.success(object))
@@ -174,9 +196,13 @@ extension OpenAI {
     
     func performSpeechRequest(request: any URLRequestBuildable, completion: @escaping (Result<AudioSpeechResult, Error>) -> Void) {
         do {
-            let request = try request.build(token: configuration.token, 
-                                            organizationIdentifier: configuration.organizationIdentifier,
-                                            timeoutInterval: configuration.timeoutInterval)
+            let request = try request.build(
+                token: configuration.token,
+                organizationIdentifier: configuration.organizationIdentifier,
+                timeoutInterval: configuration.timeoutInterval,
+                defaultHeaders: configuration.defaultHeaders,
+                additionalHeadersBlock: self.additionalHeadersBlock
+            )
             
             let task = session.dataTask(with: request) { data, _, error in
                 if let error = error {
